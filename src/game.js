@@ -149,7 +149,7 @@ function Game() {
     }, [handleKeyDown]);
     
     const CurrentScore = () => (
-        <div class = "game-score">
+        <div className = "game-score">
         <div ref={scoreDisplayRef} className="score">
             SCORE
             <div className="number"> {score} </div>
@@ -158,7 +158,7 @@ function Game() {
     );
 
     const BestScore = () => (
-        <div class = "game-score">
+        <div className = "game-score">
         <div className="score">
             BEST
             <div className="number"> {bestScore}</div>
