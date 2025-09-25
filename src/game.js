@@ -1,355 +1,223 @@
-import React, {useEffect, useState} from "react";
+import React, { useEffect, useState, useRef } from "react";
 import Board from './board';
-
-//MERGED INDEX NOT WORKING, ALSO WORK FOR SCORE AND BEST SCORE
+import { processLine, getLines, setLines, placeRandomTile, BOARD_SQUARE } from "./utils.gameLogic";
 
 function Game() {
-    const [squares, setSquares] = useState(Array(16).fill(null))
-    const [score, setScore] = useState(0)
+    const [squares, setSquares] = useState(Array(BOARD_SQUARE).fill(null));
+    const [score, setScore] = useState(0);
+    const [bestScore, setBestScore] = useState(0);
+    const [isGameOver, setIsGameOver] = useState(false);
+    const BEST_SCORE_KEY = 'bestScore2048';
 
-    const getRandomIndex = () => {
-        return Math.floor(Math.random() * squares.length);
-    }
+    const scoreAnimRef = useRef(null);
+    const scoreDisplayRef = useRef(null);
 
-    const GameOver = () => {
-        console.log("game is over")
-    }
-    
-    
-    const placeRandomTile = (board)  => {
-        const newBoard = [...board];
-        let randomIndex = getRandomIndex();
-
-        while(newBoard[randomIndex] !== null) {
-            randomIndex = getRandomIndex();
-            <GameOver />
-        }
-        const value = Math.random() < 0.9 ? 2 : 4;
-        // console.log("random index", randomIndex)
-        newBoard[randomIndex] = value;
-        return newBoard;
-    }
-
+    // Initialize the board
     const initializeBoard = () => {
-        let newSquares = Array(16).fill(null);
+        setIsGameOver(false);
+        setScore(0);
+        let newSquares = Array(BOARD_SQUARE).fill(null);
         newSquares = placeRandomTile(newSquares);
         newSquares = placeRandomTile(newSquares);
         setSquares(newSquares);
     }
-
-
+    
     useEffect(() => {
-    }, [squares]);  
-
-    useEffect(() => {
+        const storedScore = localStorage.getItem(BEST_SCORE_KEY);
+        if (storedScore) {
+            setBestScore(Number(storedScore));
+        }
         initializeBoard();
-    }, []); 
+    }, []);
 
+    useEffect(() => {
+        if (score > bestScore) {
+            setBestScore(score);
+            localStorage.setItem(BEST_SCORE_KEY, score);
+        }
+    }, [score, bestScore]);
+
+    const updateScore = (points) => {
+        if (points === 0) return;
+
+        setScore(prevScore => {
+            const newScore = prevScore + points;
+            
+            if (scoreAnimRef.current && scoreDisplayRef.current) {
+                const scorePos = scoreDisplayRef.current.getBoundingClientRect();
+                
+                scoreAnimRef.current.innerHTML = `+${points}`;
+                scoreAnimRef.current.style.top = `${scorePos.top}px`;
+                scoreAnimRef.current.style.left = `${scorePos.left}px`;
+                
+                scoreAnimRef.current.classList.remove('score-animation');
+                requestAnimationFrame(() => {
+                    scoreAnimRef.current.classList.add('score-animation');
+                });
+            }
+            return newScore;
+        });
+    };
+    
+    const checkGameOver = (board) => {
+        if (board.includes(null)) return false;
+
+        const directions = ['up', 'down', 'left', 'right'];
+        for (const dir of directions) {
+            if (attemptMove(board, dir).boardChanged) return false;
+        }
+        return true;
+    };
+
+    const attemptMove = (board, direction) => {
+        const lines = getLines(board, direction);
+        let boardChanged = false;
+        let pointsGained = 0;
+
+        const processedLines = lines.map(line => {
+            const originalLine = [...line];
+            
+            if (direction === 'right' || direction === 'down') originalLine.reverse();
+
+            const { result, points } = processLine(originalLine);
+            pointsGained += points;
+            
+            if (JSON.stringify(originalLine) !== JSON.stringify(result)) {
+                boardChanged = true;
+            }
+            
+            if (direction === 'right' || direction === 'down') result.reverse();
+            
+            return result;
+        });
+
+        const newBoard = setLines(processedLines, direction);
+        return { newBoard, boardChanged, pointsGained };
+    };
 
     const moveTiles = (direction) => {
-        let updated = false;
-        let board = [...squares];
-        let mergedPositions = [];
-        switch (direction) {
-            case 'up' :
-                ({newBoard: board, updated, mergedPositions} = moveUp(board));
-                break;
-            case 'down' :
-                ({newBoard: board, updated, mergedPositions} = moveDown(board));
-                break;
-            case 'left' :
-                ({newBoard: board, updated, mergedPositions} = moveLeft(board));
-                break;
-            case 'right' :
-                ({newBoard: board, updated, mergedPositions} = moveRight(board));
-                break;
-            default :
-                break;
-        }
-        if (updated) {
-            const newBoard = placeRandomTile(board, mergedPositions);
-            setSquares(newBoard);
-        }
-    }
+        if (isGameOver) return;
 
-    const moveUp = (board) => {
+        const { newBoard, boardChanged, pointsGained } = attemptMove(squares, direction);
 
-        let newBoard = [...board];
-        let updated = false;
-        let mergedPositions = [];
-
-        let grid = [];
-        for (let i = 0; i < 4; i++) {
-            grid[i] = [newBoard[i], newBoard[i + 4], newBoard[i + 8], newBoard[i + 12]];
-        }
+        if (boardChanged) {
+            updateScore(pointsGained);
     
-        for (let col = 0; col < 4; col++) {
-            let filtered = grid[col].filter(val => val !== null); 
-            let merged = [];
-           
-            let i = 0;
-            console.log("every time value of i", i)
-            while (i < filtered.length) {
-                if (i < filtered.length - 1 && filtered[i] == filtered[i+1] && !mergedPositions.includes(i)) {
-                    filtered[i] *= 2;
-                    filtered[i+1] = null;
-                    mergedPositions.push(i + col * 4);  
-                    // console.log("merged up tiles", merged)
-                    updated = true;
-                    i += 2;
-                    // setScore(filtered[i]);
-                } else {
-                    i += 1;
-                }
-            }
+            const finalBoard = placeRandomTile(newBoard);
+            setSquares(finalBoard);
 
-            filtered = filtered.filter(val => val != null);
-      
-            while (filtered.length < 4) {
-                filtered.push(null);
-            }
-
-            for (let row = 0; row < 4; row++) {
-                newBoard[row * 4 + col] = filtered[row];
-                updated = true;
+            if (checkGameOver(finalBoard)) {
+                setIsGameOver(true);
             }
         }
-        return {newBoard, updated, mergedPositions}
-    }
+    };
 
-    const moveDown = (board) => {
-        let newBoard = [...board];
-        let updated = false;
-        let mergedPositions = [];
-
-        let grid = [];
-        for (let i = 0; i < 4; i++) {
-            grid[i] = [newBoard[i], newBoard[i+4], newBoard[i+8], newBoard[i+12]];
-        }
-
-        for (let col = 0; col < 4; col++) {
-            let filtered = grid[col].filter(val => val != null);
-            let merged = [];
-            let i = 0;
-            while (i < filtered.length) {
-                if (i < filtered.length-1 && filtered[i] == filtered[i+1] && !mergedPositions.includes(i)) {
-                    filtered[i] = filtered[i] * 2;
-                    filtered[i+1] = null;
-                    mergedPositions.push(i + col * 4);
-                    updated = true;
-                    i += 2;
-                } else {
-                    i += 1;
-                }
-            }
-            filtered = filtered.filter(val => val != null);
-
-            while (filtered.length < 4) {
-                filtered.push(null);
-            }
-            filtered.reverse();
-            for (let row = 0; row < 4; row++) {
-                newBoard[row * 4 + col] = filtered[row];
-                updated = true;
-            }
-        }
-        return {newBoard, updated, mergedPositions};
-    }
-
-    const moveLeft = (board) => {
-        let newBoard = [...board];
-        let updated = false;
-        let mergedPositions = [];
-
-        let grid = [];
-        for (let i = 0; i <16; i+=4) {
-            grid.push([newBoard[i], newBoard[i+1], newBoard[i+2], newBoard[i+3]]);
-        }
-        for (let row = 0; row < 4; row++) {
-            let filtered = grid[row].filter(val => val != null);
-            let merged = [];
-            let i = 0;
-            while (i < filtered.length) {
-                if (i < filtered.length-1 && filtered[i] == filtered[i+1] && !mergedPositions.includes(i)) {
-                    filtered[i] = filtered[i] * 2;
-                    filtered[i+1] = null;
-                    mergedPositions.push(i + row * 4);
-                    i += 2;
-                    updated = true;
-                } else {
-                    i += 1;
-                }
-            }
-            filtered = filtered.filter(val => val != null);
-            while (filtered.length < 4) {
-                filtered.push(null);
-            }
-
-            for (let col = 0; col < 4; col++) {
-                newBoard[row * 4 + col] = filtered[col];
-                updated = true;
-            }
-        }
-        return {newBoard, updated, mergedPositions};
-    }
-
-    const moveRight = (board) => {
-        let newBoard = [...board];
-        let updated = false;
-        let mergedPositions = [];
-
-        let grid = [];
-        for (let i = 0; i < 16; i+=4) {
-            grid.push([newBoard[i], newBoard[i+1], newBoard[i+2], newBoard[i+3]])
-        }
-
-        for (let row = 0; row < 4; row++) {
-            let filtered = grid[row].filter(val => val != null);
-            // let merged = [];
-            // let originalIndices =(grid[row].map((val, index) => (val !== null ? index : null)).filter(index => index !== null));
-            // console.log("original indices", originalIndices, row);
-            let i = 0;
-            // let mergedIndex = originalIndices[i] + row * 4;
-            while (i < filtered.length) {
-                if (i < filtered.length-1 && filtered[i] == filtered[i+1] && !mergedPositions.includes(i)) {
-                    console.log("i", i)
-                    filtered [i] = filtered[i] * 2;
-                    filtered[i+1] = null;
-                    // mergedPositions.push(originalIndices[i] + row * 4);
-                    updated = true;
-                    i += 2;
-                } else {
-                    i += 1;
-                }
-            }
-            filtered = filtered.filter(val => val != null);
-            while (filtered.length < 4) {
-                filtered.push(null);
-            }
-            filtered.reverse();
-            for (let col = 0; col < 4; col++) {
-                newBoard[row * 4 + col] = filtered[col];
-                updated = true;
-            }
-            // console.log("Final merged tile positions:", finalMergedPositions);
-        }
-        return {newBoard, updated, mergedPositions};
-    }
-    
     const handleKeyDown = (event) => {
-            event.preventDefault();
-            switch (event.key) {
-             case "ArrowUp" :
+        if (isGameOver) return;
+        
+        switch (event.key) {
+            case "ArrowUp":
+            case "w":
+                event.preventDefault();
                 moveTiles('up');
                 break;
-             case "ArrowDown" :
+            case "ArrowDown":
+            case "s":
+                event.preventDefault();
                 moveTiles('down');
                 break;
-             case "ArrowLeft" :
+            case "ArrowLeft":
+            case "a":
+                event.preventDefault();
                 moveTiles('left');
                 break;
-             case "ArrowRight" :
+            case "ArrowRight":
+            case "d":
+                event.preventDefault();
                 moveTiles('right');
                 break;
-             default :
-                 break;
-            }
+            default:
+                break;
         }
+    };
 
-        useEffect(() => {
-            document.addEventListener("keydown", handleKeyDown);
-            return () => {
-                document.removeEventListener("keydown", handleKeyDown);
-            };
-        }, [squares])
+    useEffect(() => {
+        document.addEventListener("keydown", handleKeyDown);
+        return () => {
+            document.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [handleKeyDown]);
+    
+    const CurrentScore = () => (
+        <div class = "game-score">
+        <div ref={scoreDisplayRef} className="score">
+            SCORE
+            <div className="number"> {score} </div>
+        </div>
+        </div>
+    );
 
-    const restartGame = () => {
-        initializeBoard();
-        // setSquares(Array(16).fill(null));
-        setScore(0);
-        
-    }
+    const BestScore = () => (
+        <div class = "game-score">
+        <div className="score">
+            BEST
+            <div className="number"> {bestScore}</div>
+        </div>
+        </div>
+    );
+    
+    const GameImage = () => (
+        <div className='title'>
+            <img src='https://www.2048.org/logo.png' alt='2048 Logo' />
+        </div>
+    );
 
- 
- 
-
-    const NewGame = () => {
-        return (
-            <div className = 'restart-game' onClick = {restartGame}>
-                New Game 
+    const Heading = () => (
+        <div className='heading'>
+            <GameImage />
+            <div className='score-container'>
+                <CurrentScore />
+                <BestScore />
             </div>
-        )
-    }
+        </div>
+    );
+    
+    const GameIntro = () => (
+        <div className='game-rule'>
+            Join numbers to get to the <strong> 2048 tile!</strong>
+        </div>
+    );
 
-    const Heading = () => {
-        return (
-            <div className = 'heading'>
-                <GameImage />
-                <div className = 'score-container'>
-                    <CurrentScore />
-                    <BestScore />
+    const NewGameButton = () => (
+        <div className='restart-game' onClick={initializeBoard}>
+            New Game
+        </div>
+    );
+    
+    const GameOverOverlay = () => (
+        <div className='game-over-overlay'>
+            <div className='game-over-text'>Game Over</div>
+            <div className='try-again-button' onClick={initializeBoard}>Try Again</div>
+        </div>
+    );
+
+    return (
+        <div>
+            <div ref={scoreAnimRef} className='score-animation-element'></div>
+
+            <div className='container'>
+                <Heading />
+                <div className='game-intro'>
+                    <GameIntro />
+                    <NewGameButton />
+                </div>
+                <div className='game-container'>
+                    <Board squares={squares} />
+                    {isGameOver && <GameOverOverlay />}
                 </div>
             </div>
-        )
-    }
-
-    const CurrentScore = () => {
-        return (
-            <div className = 'score-box'>
-                SCORE
-                <span className="bold-score"> {score} </span>
-            </div>
-        )
-    }
-
-    const BestScore = () => {
-        return (
-            <div className = 'score-box'>
-                BEST
-                <span className="bold-score"> 0</span>
-            </div>
-        )
-    }
-
-    return (
-      <div>
-        <div className = 'container'>
-            <Heading />
-            <div className = 'game-intro'>
-                <GameIntro />
-                <NewGame />
-            </div>
-            <div className = 'game-container'>
-                <Board value = {squares} onKeyDown = {handleKeyDown}/>
-            </div>
         </div>
-      </div>
-    )
-    
-   
+    );
 }
 
-
-
-const GameImage = () => {
-    return (
-    <div className = 'title'>
-        <img src = 'https://www.2048.org/logo.png' />
-    </div>
-    )
-}
-
-
-
-
-
-const GameIntro = () => {
-    return (
-        <div className = 'game-rule'>
-            Join numbers to get to the
-            <strong> 2048 tile!</strong>
-        </div>
-    )
-}
-
-export default Game
+export default Game;
